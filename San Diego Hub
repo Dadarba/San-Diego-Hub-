@@ -1,4 +1,34 @@
 -- ==========================================
+-- ДИАГНОСТИКА: ПЕРЕХВАТ ОШИБОК (СТАВИТСЯ ПЕРВОЙ СТРОКОЙ)
+-- ==========================================
+print("[DIAG] Скрипт начал выполнение")
+
+-- Перехватываем вызовы несуществующих глобальных функций
+local _old_G = _G
+local metatable = {
+    __index = function(t, k)
+        local v = rawget(t, k)
+        if v == nil then
+            error("Функция не найдена: " .. tostring(k), 2)
+        end
+        return v
+    end
+}
+setmetatable(_G, metatable)
+print("[DIAG] Перехватчик установлен")
+
+-- Эмуляция task (на всякий случай)
+if not task then
+    task = {
+        wait = function(t) return wait(t) end,
+        spawn = function(f) return spawn(f) end,
+        delay = function(t, f) return delay(t, f) end,
+    }
+    print("[DIAG] task эмулирована")
+end
+
+print("[DIAG] Скрипт продолжает выполнение")
+-- ==========================================
 -- SAN DIEGO HUB v8.5 (XOR-ЗАЩИТА)
 -- ПОЛНАЯ ВЕРСИЯ: МЕНЮ, СЛАЙДЕРЫ, ТОГГЛЫ, ХВИД, ВРЕМЯ КЛЮЧА
 -- ==========================================
