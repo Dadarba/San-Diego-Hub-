@@ -1,7 +1,75 @@
 -- ==========================================
--- SAN DIEGO HUB v8.5 (XOR-ЗАЩИТА)
--- ПОЛНАЯ ВЕРСИЯ: МЕНЮ, СЛАЙДЕРЫ, ТОГГЛЫ, ХВИД, ВРЕМЯ КЛЮЧА
+-- СИСТЕМА ЛОГИРОВАНИЯ И ОТЛАДКИ (СЛЕЖКА)
 -- ==========================================
+
+-- Глобальный логгер
+local debugLogs = {}
+local function log(msg, level)
+    level = level or "INFO"
+    local line = string.format("[%s] %s: %s", os.date("%H:%M:%S"), level, msg)
+    table.insert(debugLogs, line)
+    print(line)
+    if level == "ERROR" or level == "FATAL" then
+        spawn(function()
+            local player = game:GetService("Players").LocalPlayer
+            if not player or not player:FindFirstChild("PlayerGui") then return end
+            local gui = Instance.new("ScreenGui", player:FindFirstChild("PlayerGui"))
+            local frame = Instance.new("Frame", gui)
+            frame.Size = UDim2.new(0, 500, 0, 120)
+            frame.Position = UDim2.new(0.5, -250, 0.2, 0)
+            frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+            frame.BackgroundTransparency = 0.2
+            Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+            local label = Instance.new("TextLabel", frame)
+            label.Size = UDim2.new(1, -20, 1, -20)
+            label.Position = UDim2.new(0, 10, 0, 10)
+            label.BackgroundTransparency = 1
+            label.Text = msg
+            label.TextColor3 = level == "FATAL" and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(255, 200, 50)
+            label.Font = Enum.Font.Code
+            label.TextSize = 14
+            label.TextWrapped = true
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.TextYAlignment = Enum.TextYAlignment.Top
+            wait(8)
+            gui:Destroy()
+        end)
+    end
+end
+
+-- Перехват глобальных ошибок
+local function globalErrorHandler(err)
+    log("ГЛОБАЛЬНАЯ ОШИБКА: " .. tostring(err), "FATAL")
+    if debug and debug.traceback then
+        log(debug.traceback(err, 2), "FATAL")
+    end
+end
+
+-- Безопасное выполнение
+local function safeRun(fn)
+    return xpcall(fn, function(err)
+        log("ОШИБКА ВЫПОЛНЕНИЯ: " .. tostring(err), "ERROR")
+        if debug and debug.traceback then
+            log(debug.traceback(err, 2), "ERROR")
+        end
+        local funcName = tostring(err):match("'([%w_]+)'") or "неизвестная"
+        log("Имя функции: " .. funcName, "ERROR")
+    end)
+end
+
+log("СКРИПТ ЗАПУЩЕН (с XOR и логированием)", "INFO")
+
+-- ==========================================
+-- ОСНОВНОЙ КОД (ОБЁРНУТ В safeRun)
+-- ==========================================
+safeRun(function()
+
+-- ==========================================
+-- SAN DIEGO HUB (С XOR-ЗАЩИТОЙ)
+-- ВКЛАДКА VISUALS, ЛОГИРОВАНИЕ КАЖДОГО ШАГА
+-- ==========================================
+
+log("Загрузка сервисов...", "INFO")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -9,6 +77,7 @@ local RunService = game:GetService("RunService")
 local TeleportService = game:GetService("TeleportService")
 local VirtualUser = game:GetService("VirtualUser")
 local HttpService = game:GetService("HttpService")
+local Debris = game:GetService("Debris")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -16,7 +85,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- ==========================================
 -- НАСТРОЙКИ
 -- ==========================================
-local HubTitle = "San Diego Hub v8.5"
+local HubTitle = "San Diego Hub v9.0 (XOR)"
 local keyFileName = "SDBorderHub_Auth.txt"
 local isPremium = false
 local isAuthenticated = false 
@@ -24,10 +93,13 @@ local isAuthenticated = false
 local GITHUB_URL = "https://raw.githubusercontent.com/Dadarba/San-Diego-Hub-/refs/heads/main/Keys"
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1542979817891307613/HbCojd02roo3S974F-B8ry6YpPPjHadB5O26MTp4FNABYbrarZBCWJLRjM-F13SwAohn"
 
+log("Настройки загружены", "INFO")
+
 -- ==========================================
--- XOR-КЛЮЧ (КОРОТКИЙ, БЕЗ СПЕЦСИМВОЛОВ – МОЖЕТЕ ИЗМЕНИТЬ)
+-- XOR-КЛЮЧ (ПРОСТОЙ, БЕЗ СПЕЦСИМВОЛОВ)
 -- ==========================================
 local XOR_KEY = "SanDiego2025"
+log("XOR-ключ установлен", "INFO")
 
 -- ==========================================
 -- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -41,6 +113,7 @@ local function GetHWID()
     return hwid
 end
 local MyHWID = GetHWID()
+log("HWID получен: " .. MyHWID, "INFO")
 
 -- XOR (без bit32)
 local function xor_encrypt(data, key)
@@ -82,10 +155,11 @@ local function DecodeBase64(data)
 end
 
 -- ==========================================
--- ОТПРАВКА ВЕБХУКА (АСИНХРОННО)
+-- ОТПРАВКА ВЕБХУКА
 -- ==========================================
 local function SendWebhookAsync(inputKey, userHwid)
     spawn(function()
+        log("Отправка вебхука...", "INFO")
         local data = {
             ["embeds"] = {{
                 ["title"] = "🚨 Запрос на привязку HWID!",
@@ -110,6 +184,7 @@ local function SendWebhookAsync(inputKey, userHwid)
                 Timeout = 5
             })
         end
+        log("Вебхук отправлен", "INFO")
     end)
 end
 
@@ -117,6 +192,7 @@ end
 -- ВАЛИДАЦИЯ КЛЮЧА (XOR + BASE64)
 -- ==========================================
 local function ValidateSecureKey(inputKey)
+    log("Начало проверки ключа: " .. inputKey, "INFO")
     inputKey = inputKey:gsub("^%s*(.-)%s*$", "%1")
     if inputKey == "" then return false, "EMPTY_KEY" end
 
@@ -166,6 +242,7 @@ local function ValidateSecureKey(inputKey)
             local base64decoded = DecodeBase64(encodedLine)
             if base64decoded ~= "" then
                 local decrypted = xor_encrypt(base64decoded, XOR_KEY)
+                log("Расшифрованная строка: " .. decrypted, "INFO")
                 if decrypted ~= "" then
                     local keyPart, hwidPart, timePart = decrypted:match("([^:]+):([^:]+):?([^:]*)")
                     if keyPart and hwidPart then
@@ -279,6 +356,291 @@ RunService.RenderStepped:Connect(function(dt)
         lastFPSUpdate = tick()
     end
 end)
+
+-- ==========================================
+-- ВИЗУАЛЬНЫЕ ЭФФЕКТЫ (VISUALS)
+-- ==========================================
+local visualEffectsEnabled = false
+local selectedEffect = 1
+local effectColor = Color3.fromRGB(255, 200, 50)
+local effectSize = 2
+local effectDuration = 0.8
+
+-- Шаблоны эффектов (10 штук)
+local effectTemplates = {
+    { name = "Взрыв", type = "explosion" },
+    { name = "Кольцо", type = "ring" },
+    { name = "Звезда", type = "star" },
+    { name = "Спираль", type = "spiral" },
+    { name = "Искры", type = "sparks" },
+    { name = "Волна", type = "wave" },
+    { name = "Круг", type = "circle" },
+    { name = "Крест", type = "cross" },
+    { name = "Треугольник", type = "triangle" },
+    { name = "Сердце", type = "heart" },
+}
+
+-- Функция создания эффекта
+local function createEffect(position, effectType, color, size, duration)
+    if not position then return end
+    local parts = {}
+    local count = 30
+    local spread = size
+    local time = duration or 0.8
+
+    if effectType == "explosion" then
+        for i = 1, count do
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.2, 0.2, 0.2)
+            part.Position = position + Vector3.new(
+                math.random(-spread, spread) / 10,
+                math.random(-spread, spread) / 10,
+                math.random(-spread, spread) / 10
+            )
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.5, 0.5, 0.5)
+            goal.Position = position + Vector3.new(
+                math.random(-spread*2, spread*2) / 10,
+                math.random(-spread*2, spread*2) / 10,
+                math.random(-spread*2, spread*2) / 10
+            )
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "ring" then
+        for i = 1, 60 do
+            local angle = (i / 60) * 2 * math.pi
+            local radius = spread
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.15, 0.15, 0.15)
+            part.Position = position + Vector3.new(math.cos(angle) * radius, math.random(-0.5, 0.5), math.sin(angle) * radius)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.3, 0.3, 0.3)
+            goal.Position = position + Vector3.new(math.cos(angle) * radius * 1.5, math.random(-1, 1), math.sin(angle) * radius * 1.5)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "star" then
+        for i = 1, 80 do
+            local angle = (i / 80) * 2 * math.pi
+            local radius = spread * (0.5 + 0.5 * math.sin(angle * 3))
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.1, 0.1, 0.1)
+            part.Position = position + Vector3.new(math.cos(angle) * radius, math.sin(angle*2)*0.5, math.sin(angle) * radius)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.3, 0.3, 0.3)
+            goal.Position = position + Vector3.new(math.cos(angle) * radius * 1.2, math.sin(angle*2)*1, math.sin(angle) * radius * 1.2)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "spiral" then
+        for i = 1, 120 do
+            local t = i / 120
+            local angle = t * 4 * math.pi
+            local radius = spread * t
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.1, 0.1, 0.1)
+            part.Position = position + Vector3.new(math.cos(angle) * radius, math.sin(t*20)*0.3, math.sin(angle) * radius)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.2, 0.2, 0.2)
+            goal.Position = position + Vector3.new(math.cos(angle) * radius * 1.3, math.sin(t*20)*0.5, math.sin(angle) * radius * 1.3)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "sparks" then
+        for i = 1, 50 do
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.1, 0.1, 0.1)
+            part.Position = position + Vector3.new(
+                math.random(-spread, spread) / 10,
+                math.random(-spread, spread) / 10,
+                math.random(-spread, spread) / 10
+            )
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.2, 0.2, 0.2)
+            goal.Position = position + Vector3.new(
+                math.random(-spread*3, spread*3) / 10,
+                math.random(-spread*3, spread*3) / 10,
+                math.random(-spread*3, spread*3) / 10
+            )
+            local tween = TweenService:Create(part, TweenInfo.new(time * 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "wave" then
+        for i = 1, 40 do
+            local angle = (i / 40) * 2 * math.pi
+            local radius = spread
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.2, 0.2, 0.2)
+            part.Position = position + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.4, 0.4, 0.4)
+            goal.Position = position + Vector3.new(math.cos(angle) * radius * 2, math.sin(angle*4)*0.5, math.sin(angle) * radius * 2)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "circle" then
+        for i = 1, 30 do
+            local angle = (i / 30) * 2 * math.pi
+            local radius = spread
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.2, 0.2, 0.2)
+            part.Position = position + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.3, 0.3, 0.3)
+            goal.Position = position + Vector3.new(math.cos(angle) * radius * 1.2, 0.5, math.sin(angle) * radius * 1.2)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "cross" then
+        for _, dir in ipairs({Vector3.new(1,0,0), Vector3.new(-1,0,0), Vector3.new(0,1,0), Vector3.new(0,-1,0), Vector3.new(0,0,1), Vector3.new(0,0,-1)}) do
+            for i = 1, 10 do
+                local part = Instance.new("Part")
+                part.Size = Vector3.new(0.1, 0.1, 0.1)
+                part.Position = position + dir * (i / 10) * spread
+                part.BrickColor = BrickColor.new(color)
+                part.Anchored = true
+                part.CanCollide = false
+                part.Parent = workspace
+                local goal = {}
+                goal.Size = Vector3.new(0.2, 0.2, 0.2)
+                goal.Position = position + dir * (i / 10) * spread * 1.5
+                local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+                tween:Play()
+                Debris:AddItem(part, time + 0.2)
+                table.insert(parts, part)
+            end
+        end
+    elseif effectType == "triangle" then
+        local points = {
+            Vector3.new(0, 0, 1),
+            Vector3.new(0.866, 0, -0.5),
+            Vector3.new(-0.866, 0, -0.5)
+        }
+        for i = 1, 30 do
+            local p = points[math.random(1,3)]
+            local dist = math.random() * spread
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.1, 0.1, 0.1)
+            part.Position = position + p * dist + Vector3.new(math.random(-0.2,0.2), math.random(-0.2,0.2), math.random(-0.2,0.2))
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.2, 0.2, 0.2)
+            goal.Position = position + p * dist * 1.3
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    elseif effectType == "heart" then
+        for i = 1, 50 do
+            local t = i / 50 * 2 * math.pi
+            local x = 16 * math.sin(t)^3
+            local y = 13 * math.cos(t) - 5 * math.cos(2*t) - 2 * math.cos(3*t) - math.cos(4*t)
+            local scale = 0.05 * spread
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(0.15, 0.15, 0.15)
+            part.Position = position + Vector3.new(x * scale, y * scale + 0.5, 0)
+            part.BrickColor = BrickColor.new(color)
+            part.Anchored = true
+            part.CanCollide = false
+            part.Parent = workspace
+            local goal = {}
+            goal.Size = Vector3.new(0.25, 0.25, 0.25)
+            goal.Position = position + Vector3.new(x * scale * 1.2, y * scale * 1.2 + 0.5, 0)
+            local tween = TweenService:Create(part, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), goal)
+            tween:Play()
+            Debris:AddItem(part, time + 0.2)
+            table.insert(parts, part)
+        end
+    end
+    return parts
+end
+
+-- Перехват событий прыжка и приземления
+local function setupVisuals()
+    local char = player.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    humanoid.Jumping:Connect(function()
+        if visualEffectsEnabled then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local pos = root.Position
+                local template = effectTemplates[selectedEffect]
+                if template then
+                    createEffect(pos, template.type, effectColor, effectSize, effectDuration)
+                end
+            end
+        end
+    end)
+
+    humanoid.StateChanged:Connect(function(old, new)
+        if visualEffectsEnabled and new == Enum.HumanoidStateType.Landed then
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if root then
+                local pos = root.Position
+                local template = effectTemplates[selectedEffect]
+                if template then
+                    createEffect(pos, template.type, effectColor, effectSize, effectDuration)
+                end
+            end
+        end
+    end)
+end
+
+player.CharacterAdded:Connect(function(char)
+    wait(0.5)
+    setupVisuals()
+end)
+setupVisuals()
 
 -- ==========================================
 -- МЕНЮ С ПЕРЕТАСКИВАНИЕМ И СЛАЙДЕРАМИ
@@ -501,76 +863,98 @@ local function CreateSeparator()
 end
 
 -- ==========================================
+-- ФУНКЦИЯ ДЛЯ ВКЛАДОК (ЗАГОЛОВКИ)
+-- ==========================================
+local function CreateTab(name)
+    local btn = Instance.new("TextButton", ContentArea)
+    btn.Size = UDim2.new(1, -10, 0, 30)
+    btn.Position = UDim2.new(0, 5, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    btn.Text = "--- " .. name .. " ---"
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    btn.BackgroundTransparency = 0.5
+    return btn
+end
+
+-- ==========================================
 -- ЗАПОЛНЕНИЕ МЕНЮ
 -- ==========================================
+CreateTab("📜 Main Scripts")
 CreateButton("⚡ Запустить V Hub", function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/nikituir-droid/tylevo/refs/heads/main/tylevelo.lua"))()
     MainUI.Visible = false
 end)
-
 CreateButton("⚡ Запустить WhiteProject", function()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/aaleks2408/WhiteProject/refs/heads/master/Script.lua"))()
     MainUI.Visible = false
 end)
-
 CreateButton("🔄 Server Hop", function()
     TeleportService:Teleport(game.PlaceId, player)
 end)
-
 CreateSeparator()
 
--- Настройки игрока
-local cframeToggleState = false
-local walkSpeedValue = 50
-local jumpToggleState = false
-local jumpPowerValue = 100
-
-CreateToggle("CFrame WalkSpeed", function(v)
-    cframeToggleState = v
-    applyMods()
-end)
-
-CreateSlider("Скорость (WalkSpeed)", 16, 100, 50, function(val)
-    walkSpeedValue = val
-    if cframeToggleState then applyMods() end
-end)
-
-CreateToggle("Velocity HighJump", function(v)
-    jumpToggleState = v
-    applyMods()
-end)
-
-CreateSlider("Высота прыжка", 50, 300, 100, function(val)
-    jumpPowerValue = val
-    if jumpToggleState then applyMods() end
-end)
-
-CreateToggle("Infinite Jump", function(v)
-    _G.InfJ = v
-end)
-
+CreateTab("🏃‍♂️ Player")
+CreateToggle("CFrame WalkSpeed", function(v) _G.cframeSpeed = v end)
+CreateSlider("Скорость (WalkSpeed)", 16, 100, 50, function(val) _G.walkSpeedValue = val end)
+CreateToggle("Velocity HighJump", function(v) _G.highJump = v end)
+CreateSlider("Высота прыжка", 50, 300, 100, function(val) _G.jumpPowerValue = val end)
+CreateToggle("Infinite Jump", function(v) _G.InfJ = v end)
 CreateSeparator()
 
+CreateTab("🎨 Visuals")
+CreateToggle("Включить эффекты", function(v)
+    visualEffectsEnabled = v
+end)
+CreateSlider("Шаблон (1-10)", 1, 10, 1, function(val)
+    selectedEffect = math.floor(val)
+    SendNotification("Выбран шаблон: " .. effectTemplates[selectedEffect].name, Color3.fromRGB(100, 200, 255))
+end)
+local colorOptions = {
+    Color3.fromRGB(255, 200, 50),
+    Color3.fromRGB(255, 50, 50),
+    Color3.fromRGB(50, 255, 50),
+    Color3.fromRGB(50, 200, 255),
+    Color3.fromRGB(255, 50, 200),
+    Color3.fromRGB(255, 255, 255),
+}
+local colorIndex = 1
+CreateSlider("Цвет (1-6)", 1, 6, 1, function(val)
+    colorIndex = math.floor(val)
+    effectColor = colorOptions[colorIndex]
+    SendNotification("Цвет изменён", Color3.fromRGB(100, 200, 255))
+end)
+CreateSlider("Размер", 1, 5, 2, function(val)
+    effectSize = val
+end)
+CreateSlider("Длительность (сек)", 0.3, 1.5, 0.8, function(val)
+    effectDuration = val
+end)
+CreateSeparator()
+
+CreateTab("⚙️ Settings")
 CreateButton("🗑️ Сбросить Ключ", function()
     if delfile then delfile(keyFileName) end
     SendNotification("Ключ удален!", Color3.fromRGB(200, 60, 60))
 end)
 
 -- ==========================================
--- ПРИМЕНЕНИЕ НАСТРОЕК
+-- ПРИМЕНЕНИЕ НАСТРОЕК ИГРОКА
 -- ==========================================
 local function applyMods()
     local char = player.Character
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
-    if cframeToggleState then
-        humanoid.WalkSpeed = walkSpeedValue
+    if _G.cframeSpeed then
+        humanoid.WalkSpeed = _G.walkSpeedValue or 50
     else
         humanoid.WalkSpeed = 16
     end
-    if jumpToggleState then
-        humanoid.JumpPower = jumpPowerValue
+    if _G.highJump then
+        humanoid.JumpPower = _G.jumpPowerValue or 100
     else
         humanoid.JumpPower = 50
     end
@@ -725,23 +1109,28 @@ LoginBtn.Activated:Connect(function()
     local done = false
     local success = false
     local status = nil
-    local co = coroutine.create(function()
+    local errorMsg = nil
+    spawn(function()
         local ok, succ, stat = pcall(ValidateSecureKey, input)
         if ok then
             success = succ
             status = stat
         else
+            errorMsg = succ
             status = "Ошибка: " .. tostring(succ)
         end
         done = true
     end)
-    coroutine.resume(co)
     local start = tick()
     while not done and tick() - start < 6 do
         wait(0.1)
     end
     if not done then
         SendNotification("Таймаут!", Color3.fromRGB(255, 80, 80))
+        return
+    end
+    if errorMsg then
+        SendNotification("Ошибка: " .. tostring(errorMsg), Color3.fromRGB(255, 80, 80))
         return
     end
     if not success then
@@ -802,3 +1191,9 @@ UserInputService.JumpRequest:Connect(function()
         end
     end
 end)
+
+log("Основной код выполнен", "INFO")
+
+end) -- КОНЕЦ safeRun
+
+log("Скрипт завершил выполнение", "INFO")
